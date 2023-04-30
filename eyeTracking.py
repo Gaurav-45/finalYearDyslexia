@@ -4,7 +4,13 @@ import cv2 as cv
 import numpy as np
 import mediapipe as mp 
 import pandas as pd
+import time
 
+columns = ["LX", "LY", "RX", "RY"]
+finList = []
+
+FREQ = 100
+CYCLETIME = 1/FREQ
 
 mp_face_mesh = mp.solutions.face_mesh
 LEFT_EYE =[ 362, 382, 381, 380, 374, 373, 390, 249, 263, 466, 388, 387, 386, 385,384, 398 ]
@@ -19,7 +25,15 @@ with mp_face_mesh.FaceMesh(
     min_detection_confidence=0.5,
     min_tracking_confidence=0.5
 ) as face_mesh:
+    t0 = time.perf_counter()
+    time_counter = t0
     while True:
+        now = time.perf_counter()
+        elapsed_time = now - t0
+        target_time = time_counter + CYCLETIME
+        if elapsed_time < target_time:
+            time.sleep(target_time - elapsed_time)
+
         ret, frame = cap.read()
         if not ret:
             break
@@ -28,22 +42,21 @@ with mp_face_mesh.FaceMesh(
         img_h, img_w = frame.shape[:2]
         results = face_mesh.process(rgb_frame)
         if results.multi_face_landmarks:
-            # print(results.multi_face_landmarks[0].landmark)
             mesh_points=np.array([np.multiply([p.x, p.y], [img_w, img_h]).astype(int) for p in results.multi_face_landmarks[0].landmark])
-            # print(mesh_points.shape)
-            # cv.polylines(frame, [mesh_points[LEFT_IRIS]], True, (0,255,0), 1, cv.LINE_AA)
-            # cv.polylines(frame, [mesh_points[RIGHT_IRIS]], True, (0,255,0), 1, cv.LINE_AA)
             (l_cx, l_cy), l_radius = cv.minEnclosingCircle(mesh_points[LEFT_IRIS])
             (r_cx, r_cy), r_radius = cv.minEnclosingCircle(mesh_points[RIGHT_IRIS])
             center_left = np.array([l_cx, l_cy], dtype=np.int32)
             center_right = np.array([r_cx, r_cy], dtype=np.int32)
             cv.circle(frame, center_left, int(l_radius), (255,0,255), 1, cv.LINE_AA)
             cv.circle(frame, center_right, int(r_radius), (255,0,255), 1, cv.LINE_AA)
-            print(center_left)
-            print(center_right)
+            eyePositions = np.append(center_left, center_right)
+            finList.append(eyePositions)
         cv.imshow('img', frame)
+        time_counter += CYCLETIME
         key = cv.waitKey(1)
         if key ==ord('q'):
+            finDf = pd.DataFrame(data = finList, columns = columns)
+            print(finDf)
             break
 cap.release()
 cv.destroyAllWindows()
